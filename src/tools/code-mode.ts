@@ -22,6 +22,8 @@ export function registerCodeMode(server: McpServer, env: CodeModeEnv): void {
 
 	const executeTool = createExecuteTool({
 		prefix: "biogrid",
+		// Verifiable provenance: biogrid_execute results carry a _meta.citation.
+		source: { id: "biogrid", name: "BioGRID", url: "https://thebiogrid.org", license: "MIT" },
 		catalog: biogridCatalog,
 		apiFetch,
 		doNamespace: env.BIOGRID_DATA_DO,
