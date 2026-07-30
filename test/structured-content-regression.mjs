@@ -65,7 +65,7 @@ for (const { path: filePath, required } of toolExpectations) {
 
 const indexContent = readFile('src/index.ts');
 assertContains('src/index.ts', indexContent, 'BiogridDataDO', 'index.ts exports BiogridDataDO');
-assertContains('src/index.ts', indexContent, 'McpAgent', 'index.ts uses McpAgent');
+assertContains('src/index.ts', indexContent, 'StatelessMcpWorker', 'index.ts uses StatelessMcpWorker');
 assertContains('src/index.ts', indexContent, 'registerCodeMode', 'index.ts wires registerCodeMode');
 assertContains('src/index.ts', indexContent, 'registerQueryData', 'index.ts wires registerQueryData');
 assertContains('src/index.ts', indexContent, 'registerGetSchema', 'index.ts wires registerGetSchema');
