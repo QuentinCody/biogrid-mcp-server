@@ -1,4 +1,14 @@
 {
+	// REQUIRED SECRET — BIOGRID_ACCESS_KEY.
+	// Every BioGRID REST endpoint (including the /version/ and /organisms/
+	// metadata helpers) is gated behind a free 32-character access key. Without
+	// it this Worker fails every query with code BIOGRID_ACCESS_KEY_MISSING.
+	//   1. Register (free, instant): https://webservice.thebiogrid.org/
+	//   2. npx wrangler secret put BIOGRID_ACCESS_KEY
+	//   3. pnpm --filter biogrid-mcp-server run deploy
+	// Local dev: put BIOGRID_ACCESS_KEY=<key> in .dev.vars (gitignored).
+	// Do NOT add it to "vars" — a plaintext var here would be committed AND
+	// would shadow the secret at runtime.
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "biogrid-mcp-server",
 	"main": "src/index.ts",

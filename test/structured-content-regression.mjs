@@ -30,6 +30,31 @@ function assertContains(filePath, haystack, needle, testName) {
   }
 }
 
+function assertMissing(filePath, haystack, needle, testName) {
+  totalTests++;
+  if (!haystack.includes(needle)) {
+    console.log(`${GREEN}✓${RESET} ${testName}`);
+    passedTests++;
+  } else {
+    console.log(`${RED}✗${RESET} ${testName}`);
+    console.log(`  Should NOT contain: ${needle}`);
+    console.log(`  File: ${filePath}`);
+    failedTests++;
+  }
+}
+
+function assertTrue(condition, testName, detail) {
+  totalTests++;
+  if (condition) {
+    console.log(`${GREEN}✓${RESET} ${testName}`);
+    passedTests++;
+  } else {
+    console.log(`${RED}✗${RESET} ${testName}`);
+    if (detail !== undefined) console.log(`  Got: ${detail}`);
+    failedTests++;
+  }
+}
+
 function readFile(relPath) {
   const absPath = path.resolve(SERVER_ROOT, relPath);
   return fs.readFileSync(absPath, 'utf8');
@@ -71,7 +96,7 @@ assertContains('src/index.ts', indexContent, 'registerQueryData', 'index.ts wire
 assertContains('src/index.ts', indexContent, 'registerGetSchema', 'index.ts wires registerGetSchema');
 
 const catalogContent = readFile('src/spec/catalog.ts');
-for (const category of ['interactions', 'metadata', 'chemicals']) {
+for (const category of ['interactions', 'metadata']) {
   assertContains(
     'src/spec/catalog.ts',
     catalogContent,
@@ -80,10 +105,27 @@ for (const category of ['interactions', 'metadata', 'chemicals']) {
   );
 }
 assertContains('src/spec/catalog.ts', catalogContent, 'BIOGRID_ACCESS_KEY', 'catalog notes mention BIOGRID_ACCESS_KEY secret');
+// `/chemicals/` is a hard nginx 404 upstream with or without a key and is absent
+// from the official WADL. Advertising it told the model an endpoint existed that
+// never answers, so the catalog must not name it as an operation again.
+assertMissing('src/spec/catalog.ts', catalogContent, 'path: "/chemicals/"', 'catalog does not advertise the phantom /chemicals/ endpoint');
+assertMissing('src/spec/catalog.ts', catalogContent, 'category: "chemicals"', 'catalog has no chemicals category');
+// endpointCount used to be a hand-written 8 next to an array of 7.
+assertContains('src/spec/catalog.ts', catalogContent, 'endpointCount: endpoints.length', 'catalog derives endpointCount from the endpoints array');
 
 const adapterContent = readFile('src/lib/api-adapter.ts');
 assertContains('src/lib/api-adapter.ts', adapterContent, 'normalizeInteractionsObject', 'api-adapter normalizes BioGRID keyed-by-id objects');
 assertContains('src/lib/api-adapter.ts', adapterContent, 'BIOGRID_ACCESS_KEY', 'api-adapter wires BIOGRID_ACCESS_KEY env');
+
+// The access key is preflighted BEFORE the upstream call, so the failure names
+// BIOGRID_ACCESS_KEY instead of relaying an opaque upstream 401 body.
+const adapterKeyGuard = adapterContent.indexOf('missingAccessKeyError()');
+const adapterFirstFetch = adapterContent.indexOf('biogridFetch(');
+assertTrue(
+  adapterKeyGuard !== -1 && adapterFirstFetch !== -1 && adapterKeyGuard < adapterFirstFetch,
+  'api-adapter throws missingAccessKeyError() BEFORE calling biogridFetch',
+  `guard@${adapterKeyGuard} fetch@${adapterFirstFetch}`,
+);
 
 const httpContent = readFile('src/lib/http.ts');
 assertContains('src/lib/http.ts', httpContent, 'accesskey', 'http.ts injects accesskey query param');
@@ -94,6 +136,40 @@ assertContains('wrangler.jsonc', wranglerContent, 'BIOGRID_DATA_DO', 'wrangler.j
 assertContains('wrangler.jsonc', wranglerContent, 'BiogridDataDO', 'wrangler.jsonc migrates BiogridDataDO class');
 assertContains('wrangler.jsonc', wranglerContent, '"port": 8897', 'wrangler.jsonc dev port is 8897');
 assertContains('wrangler.jsonc', wranglerContent, 'CODE_MODE_LOADER', 'wrangler.jsonc binds CODE_MODE_LOADER');
+
+const readmeContent = readFile('README.md');
+assertContains('README.md', readmeContent, 'https://webservice.thebiogrid.org/', 'README links the BioGRID registration page');
+assertContains('README.md', readmeContent, 'wrangler secret put BIOGRID_ACCESS_KEY', 'README gives the wrangler secret command');
+
+// --- Behaviour: the missing-key error is actionable, not decorative ----------
+const accessKey = await import('../src/lib/access-key.ts');
+
+assertTrue(accessKey.normalizeAccessKey(undefined) === undefined, 'normalizeAccessKey(undefined) is undefined');
+assertTrue(accessKey.normalizeAccessKey('   ') === undefined, 'normalizeAccessKey(whitespace) is undefined — a blank secret is an unset secret');
+assertTrue(accessKey.normalizeAccessKey('  abc  ') === 'abc', 'normalizeAccessKey trims the secret');
+
+const missingErr = accessKey.missingAccessKeyError();
+assertTrue(missingErr instanceof Error, 'missingAccessKeyError() returns an Error (it is thrown, never returned as data)');
+assertTrue(missingErr.status === 401, 'missing-key error keeps status 401 so the caller still sees a failure', missingErr.status);
+const remediation = missingErr.data?.error;
+assertTrue(remediation?.code === 'BIOGRID_ACCESS_KEY_MISSING', 'missing-key error carries code BIOGRID_ACCESS_KEY_MISSING', remediation?.code);
+assertTrue(remediation?.env_var === 'BIOGRID_ACCESS_KEY', 'missing-key error names the env var', remediation?.env_var);
+assertTrue(remediation?.registration_url === 'https://webservice.thebiogrid.org/', 'missing-key error names the registration URL', remediation?.registration_url);
+assertTrue(
+  typeof remediation?.install_command === 'string' &&
+    remediation.install_command.includes('wrangler secret put BIOGRID_ACCESS_KEY'),
+  'missing-key error names the wrangler secret command',
+  remediation?.install_command,
+);
+assertTrue(Array.isArray(remediation?.steps) && remediation.steps.length >= 3, 'missing-key error lists the registration steps', remediation?.steps?.length);
+assertTrue(
+  typeof remediation?.keyless_note === 'string' && remediation.keyless_note.includes('string-db'),
+  'missing-key error states what is NOT substituted and where keyless PPI lives',
+);
+
+assertTrue(accessKey.rejectedAccessKeyRemediation(401)?.code === 'BIOGRID_ACCESS_KEY_REJECTED', 'an upstream 401 gets the rejected-key remediation');
+assertTrue(accessKey.rejectedAccessKeyRemediation(403)?.code === 'BIOGRID_ACCESS_KEY_REJECTED', 'an upstream 403 gets the rejected-key remediation');
+assertTrue(accessKey.rejectedAccessKeyRemediation(500) === undefined, 'a 500 is NOT reported as a key problem');
 
 console.log(`\n${BLUE}📊 Test Results Summary${RESET}`);
 console.log(`Total tests: ${totalTests}`);

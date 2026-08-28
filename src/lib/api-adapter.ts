@@ -1,5 +1,11 @@
 // interlinked-tdd: exempt
 import type { ApiFetchFn } from "@bio-mcp/shared/codemode/catalog";
+import {
+	type BiogridApiError,
+	missingAccessKeyError,
+	normalizeAccessKey,
+	rejectedAccessKeyRemediation,
+} from "./access-key";
 import { biogridFetch } from "./http";
 
 /**
@@ -40,8 +46,14 @@ interface BiogridApiAdapterEnv {
 }
 
 export function createBiogridApiFetch(env?: BiogridApiAdapterEnv): ApiFetchFn {
-	const accessKey = env?.BIOGRID_ACCESS_KEY;
+	const accessKey = normalizeAccessKey(env?.BIOGRID_ACCESS_KEY);
 	return async (request) => {
+		// Preflight: every BioGRID endpoint needs a key, so an unset secret is a
+		// certain 401. Fail here with an actionable error instead of relaying an
+		// upstream body that names neither the env var nor the install command.
+		// Still a hard failure — status 401, isError:true downstream.
+		if (!accessKey) throw missingAccessKeyError();
+
 		const response = await biogridFetch(request.path, request.params, {
 			accessKey,
 		});
@@ -62,11 +74,16 @@ export function createBiogridApiFetch(env?: BiogridApiAdapterEnv): ApiFetchFn {
 				errorBody = response.statusText;
 				parsed = errorBody;
 			}
+			// A configured-but-refused key gets the same remediation, carried
+			// ALONGSIDE the upstream body rather than in place of it.
+			const remediation = rejectedAccessKeyRemediation(response.status);
 			const error = new Error(
 				`HTTP ${response.status}: ${errorBody.slice(0, 300)}`,
-			) as Error & { status: number; data: unknown };
+			) as BiogridApiError;
 			error.status = response.status;
-			error.data = parsed;
+			error.data = remediation
+				? { error: remediation, upstream: parsed }
+				: parsed;
 			throw error;
 		}
 
