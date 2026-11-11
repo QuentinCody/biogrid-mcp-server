@@ -4,7 +4,7 @@ This is a [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server
 
 ## ⚠️ Requires a free access key
 
-**Every** BioGRID REST endpoint is gated behind an access key — including the `/version/`, `/organisms/`, `/identifiers/` and `/evidence/` metadata helpers, which redirect to the registration page when no key is sent. Without `BIOGRID_ACCESS_KEY` this server answers every query with a hard failure carrying the code `BIOGRID_ACCESS_KEY_MISSING`. It does **not** fall back to substitute data.
+**Every interaction-service endpoint** is gated behind an access key — including the `/version/`, `/organisms/`, `/identifiers/` and `/evidence/` metadata helpers, which redirect to the registration page when no key is sent. Without `BIOGRID_ACCESS_KEY` these routes return a hard failure carrying the code `BIOGRID_ACCESS_KEY_MISSING`. ORCS routes use the separate `BIOGRID_ORCS_ACCESS_KEY` described below. Neither service falls back to substitute data.
 
 Getting the key takes about two minutes and costs nothing:
 
@@ -59,7 +59,7 @@ For local development the server runs at `http://localhost:8897/mcp` (start it w
 
 ## Tools
 
-- `biogrid_search` — discover available API operations (Code Mode catalog search, 6 endpoints)
+- `biogrid_search` — discover interaction and ORCS API operations (Code Mode catalog search)
 - `biogrid_execute` — **Code Mode**: write JavaScript in a V8 isolate (`api.get()` / `api.post()` / `searchSpec()`) instead of issuing tool calls one by one
 - `biogrid_query_data` — run SQL over large responses auto-staged into a per-session SQLite database
 - `biogrid_get_schema` — inspect the inferred schema of a staged dataset
@@ -80,6 +80,37 @@ Verified 2026-08-27 against the official WADL at <https://webservice.thebiogrid.
 | `/version/` | metadata |
 
 There is **no `/chemicals/` endpoint**. The catalog used to advertise one; it returns a hard nginx `404` upstream with or without a key and is absent from the WADL, so it was removed rather than left as a phantom operation the model would keep trying.
+
+## ORCS CRISPR screens
+
+The [ORCS REST service](https://wiki.thebiogrid.org/doku.php/orcs:webservice) uses `https://orcsws.thebiogrid.org` and its own registration/key. Install `BIOGRID_ORCS_ACCESS_KEY` as a Worker secret or local `.dev.vars` entry. It is independent of `BIOGRID_ACCESS_KEY`; either service can be configured alone. Credentials are injected by the host and are never returned to Code Mode.
+
+| Adapter path | Data |
+| --- | --- |
+| `/orcs/organisms/` | Supported organisms |
+| `/orcs/vocabs/`, `/orcs/vocab/{vocab_id}` | Controlled vocabularies and terms |
+| `/orcs/screens/` | Screen metadata; `start`/`max` pagination, organism/publication and vocabulary filters |
+| `/orcs/screen/{screen_id}` | Scores for a screen, optionally filtered by gene, hit status and score bounds |
+| `/orcs/screen/{screen_id}/context` | Adapter join of scores with exactly one matching screen metadata record |
+| `/orcs/gene/{gene_id}`, `/orcs/genes/` | Gene scores across screens |
+
+```javascript
+const result = await api.get("/orcs/screen/{screen_id}/context", {
+  screen_id: "201", geneID: "5977", hit: "all"
+});
+// Large results stage automatically. Long metadata may be omitted from the
+// staging envelope; this compact lookup remains available.
+const context = result.screen_context ?? await api.get(
+  result.screen_context_request.path, result.screen_context_request.params
+);
+return { result, context };
+```
+
+Identifiers above come from the [provider's historical Python example](https://github.com/BioGRID/ORCS-REST-EXAMPLES), not a claim about the current release. Preserve `SCREEN_ID`, cell line, experimental setup, score definitions and significance criteria when interpreting scores. Fields such as `SCORE.1` keep their original strings and `-` missing markers. ORCS scores are complementary evidence to DepMap and cannot be substituted for its dependency values. The provider may ignore invalid vocabulary terms or filters for annotations a screen lacks; inspect the returned context.
+
+Screen discovery defaults to 100 rows, permits at most 10,000 per page, and supports bounded offset pagination. Score endpoints have no documented pagination: responses above 16MB fail with advice to narrow filters or process bulk data externally. HTTP-200 provider error objects are failures, including invalid access keys.
+
+Validation on 2026-09-27: local MCP discovery and missing-key contracts pass; controlled fixtures exercise score preservation, context joins, pagination and automatic staging. Authenticated upstream success and actual ORCS staging remain unverified because no local ORCS key is configured. The public [ORCS download listing](https://downloads.thebiogrid.org/BioGRID-ORCS/Current-Release/) advertises ORCS 2.0.18 compiled September 9, 2025; the July 2026 news item is a general BioGRID release, not an ORCS release. Direct archive probes returned HTTP 403 in this environment; bulk files are not ingested by this adapter.
 
 ## Keyless bulk downloads — measured, and deliberately not implemented
 
@@ -110,3 +141,13 @@ pnpm --filter biogrid-mcp-server run deploy   # deploy to Cloudflare Workers
 ```
 
 See [`docs/adding-mcp-servers.md`](../../docs/adding-mcp-servers.md) and the root [README](../../README.md) for the full architecture (Code Mode, staging, portals).
+
+<!-- license-and-data-terms:start -->
+## License and data terms
+
+The code in this repository is licensed under the Apache License 2.0 (see `LICENSE`).
+If you use it in your work, please cite it (see `CITATION.cff`). Citation is requested, not required.
+
+The license covers the code only. Data that this server returns comes from BioGRID and stays under the terms of that source: MIT.
+You are responsible for your use of the data under those terms.
+<!-- license-and-data-terms:end -->

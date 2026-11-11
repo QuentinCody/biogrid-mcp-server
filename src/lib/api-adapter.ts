@@ -7,6 +7,7 @@ import {
 	rejectedAccessKeyRemediation,
 } from "./access-key";
 import { biogridFetch } from "./http";
+import { createOrcsApiFetch } from "./orcs";
 
 /**
  * BioGRID returns interactions as a JSON OBJECT keyed by BioGRID interaction
@@ -43,11 +44,14 @@ function normalizeInteractionsObject(data: unknown): unknown {
 
 interface BiogridApiAdapterEnv {
 	BIOGRID_ACCESS_KEY?: string;
+	BIOGRID_ORCS_ACCESS_KEY?: string;
 }
 
 export function createBiogridApiFetch(env?: BiogridApiAdapterEnv): ApiFetchFn {
 	const accessKey = normalizeAccessKey(env?.BIOGRID_ACCESS_KEY);
+	const orcs = createOrcsApiFetch(env?.BIOGRID_ORCS_ACCESS_KEY);
 	return async (request) => {
+		if (request.path.startsWith("/orcs/")) return orcs(request);
 		// Preflight: every BioGRID endpoint needs a key, so an unset secret is a
 		// certain 401. Fail here with an actionable error instead of relaying an
 		// upstream body that names neither the env var nor the install command.

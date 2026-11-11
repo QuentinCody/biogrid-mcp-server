@@ -1,5 +1,6 @@
 // interlinked-tdd: exempt
 import type { ApiCatalog } from "@bio-mcp/shared/codemode/catalog";
+import { orcsEndpoints, orcsWorkflows } from "./orcs";
 
 /**
  * BioGRID REST API catalog.
@@ -31,7 +32,9 @@ const PAGE_SIZE_HINT =
 	"Default 10,000 records per request, max 10,000 (use start= for offset pagination).";
 
 const NOTES =
-	"- AUTH: every request needs `accesskey` — host HTTP layer injects it from BIOGRID_ACCESS_KEY secret. Do NOT pass `accesskey` in api.get(...) params.\n" +
+	"- AUTH: interaction/metadata routes need BIOGRID_ACCESS_KEY; /orcs/* routes independently need BIOGRID_ORCS_ACCESS_KEY registered at https://orcsws.thebiogrid.org/. The host injects credentials. Do NOT pass access keys in api.get params.\n" +
+	"- ORCS is a separate CRISPR-screen dataset. /orcs/screens/ retains cell line, library/conditions, score definitions and significance criteria. /orcs/screen/{screen_id}/context joins that metadata with score rows. Scores remain in provider units, including '-' missing values; do not equate them with DepMap dependency scores.\n" +
+	"- ORCS always uses JSON. Invalid vocabulary terms may be silently ignored upstream; discover /orcs/vocabs/ and /orcs/vocab/{vocab_id}, and verify returned context. Hit/score filters may be ignored if a screen lacks the relevant annotation. Authentication errors can arrive as HTTP 200 with STATUS:ERROR and are surfaced as failures.\n" +
 	"- If the secret is unset the adapter fails BEFORE calling upstream with code `BIOGRID_ACCESS_KEY_MISSING` and the registration/install steps in `error.data.error`. That is a real failure, not an empty result — do NOT report 'no interactions found'.\n" +
 	"- There is NO `/chemicals/` endpoint (404 upstream, absent from the WADL). BioGRID publishes chemical-protein edges only as the bulk file BIOGRID-CHEMICALS-LATEST.chemtab.zip; this server does not serve it.\n" +
 	"- Always set `format=json` for structured access (default upstream is `tab2`). The adapter requests JSON via `Accept: application/json` but the upstream defers to the `format` query param.\n" +
@@ -262,14 +265,15 @@ const endpoints: ApiCatalog["endpoints"] = [
 ];
 
 export const biogridCatalog: ApiCatalog = {
-	name: "BioGRID REST",
+	name: "BioGRID interactions and ORCS",
 	baseUrl: "https://webservice.thebiogrid.org",
 	// Current release is the 5.x series (`/version/` returns the exact build).
 	version: "5.0",
 	auth: "required",
 	// Derived, never hand-counted: the literal used to say 8 while the array
 	// held 7, one of which (`/chemicals/`) did not exist upstream at all.
-	endpointCount: endpoints.length,
+	endpointCount: endpoints.length + orcsEndpoints.length,
 	notes: NOTES,
-	endpoints,
+	endpoints: [...endpoints, ...orcsEndpoints],
+	workflows: orcsWorkflows,
 };

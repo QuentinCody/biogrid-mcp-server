@@ -9,10 +9,11 @@ interface CodeModeEnv {
 	BIOGRID_DATA_DO: DurableObjectNamespace;
 	CODE_MODE_LOADER: WorkerLoader;
 	BIOGRID_ACCESS_KEY?: string;
+	BIOGRID_ORCS_ACCESS_KEY?: string;
 }
 
 export function registerCodeMode(server: McpServer, env: CodeModeEnv): void {
-	const apiFetch = createBiogridApiFetch({ BIOGRID_ACCESS_KEY: env.BIOGRID_ACCESS_KEY });
+	const apiFetch = createBiogridApiFetch({ BIOGRID_ACCESS_KEY: env.BIOGRID_ACCESS_KEY, BIOGRID_ORCS_ACCESS_KEY: env.BIOGRID_ORCS_ACCESS_KEY });
 
 	const searchTool = createSearchTool({
 		prefix: "biogrid",

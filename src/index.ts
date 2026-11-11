@@ -13,6 +13,7 @@ interface BiogridEnv {
 	BIOGRID_DATA_DO: DurableObjectNamespace;
 	CODE_MODE_LOADER: WorkerLoader;
 	BIOGRID_ACCESS_KEY?: string;
+	BIOGRID_ORCS_ACCESS_KEY?: string;
 }
 
 export class MyMCP extends StatelessMcpWorker {
