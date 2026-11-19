@@ -10,6 +10,8 @@
 	// Do NOT add it to "vars" — a plaintext var here would be committed AND
 	// would shadow the secret at runtime.
 	"$schema": "node_modules/wrangler/config-schema.json",
+	"services": [{ "binding": "FEEDBACK_INBOX", "service": "mcp-client-bio", "entrypoint": "FeedbackInbox" }],
+	"vars": { "MCP_FEEDBACK_SOURCE": "biogrid" },
 	"name": "biogrid-mcp-server",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-03-10",
